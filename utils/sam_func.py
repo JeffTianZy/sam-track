@@ -58,6 +58,14 @@ def object_track(img_path, tracker=None):
     return tracks
 
 
+def init_sam(checkpoint='./ckpts/sam_vit_h_4b8939.pth', device='cuda', model_type='default'):
+    print(f'Initializing Segment-anything from {checkpoint} on {device}...')
+    sam = sam_model_registry[model_type](checkpoint=checkpoint)
+    sam.to(device=device)
+    predictor = SamPredictor(sam)
+    return predictor
+
+
 def auto_seg(img_path, tracks, checkpoint='./ckpts/sam_vit_h_4b8939.pth', device='cuda', model_type='default'):
     sam = sam_model_registry[model_type](checkpoint=checkpoint)
     sam.to(device=device)
