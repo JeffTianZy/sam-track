@@ -1,6 +1,7 @@
 import os
 import cv2
 import copy
+import imageio
 import numpy as np
 import gradio as gr
 
@@ -10,7 +11,8 @@ from .gradio_func import get_meta, create_dir
 
 def clean_temp():
     os.system(f'rm -r ./temp/*')
-    return None, None, None, None, None, None, [[], []]
+    print('Cleaned temp and cache')
+    return None, None, None, None, None, None, None, [[], []]
 
 
 class SamTracker:
@@ -53,7 +55,8 @@ def save_roi(sam_tracker, click_stack, origin_frame, roi_frame):
     for i in range(len(click_stack[0]) // 2):
         sam_tracker.bboxs.append(
             [click_stack[0][2 * i], click_stack[1][2 * i],
-             abs(click_stack[0][2 * i + 1] - click_stack[0][2 * i]), abs(click_stack[1][2 * i + 1] - click_stack[0][2 * i])])
+             abs(click_stack[0][2 * i + 1] - click_stack[0][2 * i]),
+             abs(click_stack[1][2 * i + 1] - click_stack[0][2 * i])])
 
         color = tuple(map(int, np.random.randint(0, 255, size=(3,))))
         roi_frame = cv2.rectangle(roi_frame, (click_stack[0][2 * i], click_stack[1][2 * i]),
@@ -76,10 +79,13 @@ def undo_click(click_stack, painted_first_frame, origin_frame):
     elif len(click_stack[0]) > 0:
         click_stack[0] = click_stack[0][:-2]
         click_stack[1] = click_stack[1][:-2]
-        for i in range(len(click_stack[0]) // 2):
-            color = tuple(map(int, np.random.randint(0, 255, size=(3,))))
-            painted_first_frame = cv2.rectangle(new_frame, (click_stack[0][2 * i], click_stack[1][2 * i]),
-                                                (click_stack[0][2 * i + 1], click_stack[1][2 * i + 1]), color, 2)
+        if len(click_stack[0]) > 0:
+            for i in range(len(click_stack[0]) // 2):
+                color = tuple(map(int, np.random.randint(0, 255, size=(3,))))
+                painted_first_frame = cv2.rectangle(new_frame, (click_stack[0][2 * i], click_stack[1][2 * i]),
+                                                    (click_stack[0][2 * i + 1], click_stack[1][2 * i + 1]), color, 2)
+        else:
+            painted_first_frame = new_frame
 
     return click_stack, painted_first_frame
 
@@ -89,7 +95,7 @@ def clear_click(origin_frame):
     return click_stack, origin_frame
 
 
-def tracking_objects(sam_tracker, input_video, input_img_seq):
+def tracking_objects(sam_tracker, input_video, input_img_seq, fps, progress=gr.Progress()):
     print('Start tracking!')
     if input_video is not None:
         video_name = os.path.basename(input_video).split('.')[0]
@@ -97,8 +103,8 @@ def tracking_objects(sam_tracker, input_video, input_img_seq):
         file_list = sorted([os.path.join(dir_path, file_dir) for file_dir in os.listdir(dir_path)])
     elif input_img_seq is not None:
         file_name = input_img_seq.name.split('/')[-1].split('.')[0]
-        file_path = f'./temp/{file_name}'
-        file_list = sorted([os.path.join(file_path, img_name) for img_name in os.listdir(file_path)])
+        dir_path = f'./temp/{file_name}'
+        file_list = sorted([os.path.join(dir_path, img_name) for img_name in os.listdir(file_path)])
         video_name = file_name
     else:
         return None, None
@@ -108,29 +114,55 @@ def tracking_objects(sam_tracker, input_video, input_img_seq):
 
     io_args = {
         'tracking_result_dir': tracking_result_dir,
-        'output_video': f'{tracking_result_dir}/{video_name}_seg.mp4',  # keep same format as input video
+        'output_video': f'{tracking_result_dir}/{video_name}_seg.mp4',
         'output_gif': f'{tracking_result_dir}/{video_name}_seg.gif',
+        'temp_video': f'{dir_path}/{video_name}_seg.mp4',
+        'temp_gif': f'{dir_path}/{video_name}_seg.gif',
     }
 
-    input_tracking(sam_tracker, file_list, io_args, video_name)
-
-
-def input_tracking(sam_tracker, file_list, io_args, video_name):
-    initialized = False
+    frame_size = None
 
     pred_saves = {i: [sam_tracker.bboxs[i]] for i in range(len(sam_tracker.bboxs))}
 
-    for i, frame_file in enumerate(file_list):
-        print(f"tracking on frame {i}, total frame: {len(file_list)}", flush=True)
+    for frame_file in progress.tqdm(file_list):
         frame = cv2.imread(frame_file)
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        if not initialized:
+        if frame_size is None:
             for bbox in sam_tracker.bboxs:
                 sam_tracker.tracker.add(sam_tracker.sub_tracker, frame, bbox)
-            initialized = True
+            frame_size = frame.shape
         else:
             success, boxes = sam_tracker.tracker.update(frame)
             for j, newbox in enumerate(boxes):
                 pred_saves[j].append(newbox)
 
-    print(pred_saves)
+    # Generate bboxs for visualization
+    os.system(f"cp -f {dir_path}/* {io_args['tracking_result_dir']}/")
+    bbox_list = sorted([os.path.join(io_args['tracking_result_dir'], bbox) for bbox in os.listdir(io_args['tracking_result_dir'])])
+
+    for roi_num, roi_bboxs in pred_saves.items():
+        print(f"Visualizing target No.{str(roi_num+1)}...")
+        color = tuple(map(int, np.random.randint(0, 255, size=(3,))))
+        assert len(roi_bboxs) == len(file_list)
+        for i, frame_file in enumerate(bbox_list):
+            frame = cv2.imread(frame_file)
+            painted = cv2.rectangle(frame, (int(roi_bboxs[i][0]), int(roi_bboxs[i][1])),
+                                    (int(roi_bboxs[i][0] + roi_bboxs[i][2]), int(roi_bboxs[i][1] + roi_bboxs[i][3])), color, 2)
+            cv2.imwrite(frame_file, painted)
+
+    # Generate video and gif
+    print('Generating visualizations...')
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    out = cv2.VideoWriter(io_args['temp_video'], fourcc, fps, frame_size)
+
+    frames = []
+    for img_file in bbox_list:
+        img = cv2.imread(img_file)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        frames.append(img)
+        out.write(img)
+
+    out.release()
+    imageio.mimsave(io_args['temp_gif'], frames)
+
+    return cv2.VideoCapture(io_args['temp_video']), io_args

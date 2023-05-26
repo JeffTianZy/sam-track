@@ -2,12 +2,16 @@ import gradio as gr
 from utils import *
 
 with gr.Blocks() as demo:
+
     ###################################
     ############ Front-end ############
     ###################################
+
     click_stack = gr.State([[], []])  # Storage clicks status
     origin_frame = gr.State(None)
     sam_tracker = gr.State(None)
+
+    saving_dirs = gr.State({})
 
     tracking_model = gr.Tab(label='Select and Init Tracking Model')
     with gr.Row():
@@ -83,6 +87,7 @@ with gr.Blocks() as demo:
                       outputs=[input_video,
                                input_imgs,
                                sam_tracker,
+                               saving_dirs,
                                input_first_frame,
                                origin_frame,
                                first_frame_with_roi,
@@ -94,6 +99,7 @@ with gr.Blocks() as demo:
                            outputs=[input_video,
                                     input_imgs,
                                     sam_tracker,
+                                    saving_dirs,
                                     input_first_frame,
                                     origin_frame,
                                     first_frame_with_roi,
@@ -105,6 +111,7 @@ with gr.Blocks() as demo:
                           outputs=[input_video,
                                    input_imgs,
                                    sam_tracker,
+                                   saving_dirs,
                                    input_first_frame,
                                    origin_frame,
                                    first_frame_with_roi,
@@ -136,7 +143,9 @@ with gr.Blocks() as demo:
                     outputs=[click_stack, input_first_frame])
 
     start_tracking.click(fn=tracking_objects,
-                         inputs=[sam_tracker, input_video, input_imgs],
-                         outputs=[])
+                         inputs=[sam_tracker, input_video, input_imgs, fps],
+                         outputs=[tracking_result, saving_dirs],
+                         queue=True)
 
+demo.queue()
 demo.launch()
