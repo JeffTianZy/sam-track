@@ -16,19 +16,25 @@ def clean_temp():
 
 
 class SamTracker:
-    def __init__(self, tracker='csrt'):
+    def __init__(self):
         self.tracker = cv2.legacy.MultiTracker_create()
-        if tracker == 'csrt':
-            self.sub_tracker = cv2.legacy.TrackerCSRT_create()
-        else:
-            raise NotImplementedError
         self.predictor = init_sam()
         self.bboxs = []
 
 
+def create_tracker(tracker_name):
+    if tracker_name == 'csrt':
+        tracker = cv2.legacy.TrackerCSRT_create()
+    else:
+        tracker = None
+        print('Incorrect tracker name')
+
+    return tracker
+
+
 def init_models_CSRT():
-    print('Initializing CSRT tracker...')
-    sam_tracker = SamTracker(tracker='csrt')
+    print('Initializing MultiTracker...')
+    sam_tracker = SamTracker()
     print('Initialized!')
     return sam_tracker
 
@@ -54,9 +60,10 @@ def save_roi(sam_tracker, click_stack, origin_frame, roi_frame):
 
     for i in range(len(click_stack[0]) // 2):
         sam_tracker.bboxs.append(
-            [click_stack[0][2 * i], click_stack[1][2 * i],
+            [min(click_stack[0][2 * i], click_stack[0][2 * i + 1]),
+             min(click_stack[1][2 * i], click_stack[1][2 * i + 1]),
              abs(click_stack[0][2 * i + 1] - click_stack[0][2 * i]),
-             abs(click_stack[1][2 * i + 1] - click_stack[0][2 * i])])
+             abs(click_stack[1][2 * i + 1] - click_stack[1][2 * i])])
 
         color = tuple(map(int, np.random.randint(0, 255, size=(3,))))
         roi_frame = cv2.rectangle(roi_frame, (click_stack[0][2 * i], click_stack[1][2 * i]),
@@ -104,7 +111,7 @@ def tracking_objects(sam_tracker, input_video, input_img_seq, fps, progress=gr.P
     elif input_img_seq is not None:
         file_name = input_img_seq.name.split('/')[-1].split('.')[0]
         dir_path = f'./temp/{file_name}'
-        file_list = sorted([os.path.join(dir_path, img_name) for img_name in os.listdir(file_path)])
+        file_list = sorted([os.path.join(dir_path, img_name) for img_name in os.listdir(dir_path)])
         video_name = file_name
     else:
         return None, None
@@ -129,8 +136,9 @@ def tracking_objects(sam_tracker, input_video, input_img_seq, fps, progress=gr.P
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         if frame_size is None:
             for bbox in sam_tracker.bboxs:
-                sam_tracker.tracker.add(sam_tracker.sub_tracker, frame, bbox)
-            frame_size = frame.shape
+                print(bbox)
+                sam_tracker.tracker.add(create_tracker('csrt'), frame, bbox)
+            frame_size = frame.shape[:2]
         else:
             success, boxes = sam_tracker.tracker.update(frame)
             for j, newbox in enumerate(boxes):
@@ -152,7 +160,7 @@ def tracking_objects(sam_tracker, input_video, input_img_seq, fps, progress=gr.P
 
     # Generate video and gif
     print('Generating visualizations...')
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(io_args['temp_video'], fourcc, fps, frame_size)
 
     frames = []
@@ -165,4 +173,4 @@ def tracking_objects(sam_tracker, input_video, input_img_seq, fps, progress=gr.P
     out.release()
     imageio.mimsave(io_args['temp_gif'], frames)
 
-    return cv2.VideoCapture(io_args['temp_video']), io_args
+    return io_args['temp_video'], io_args
