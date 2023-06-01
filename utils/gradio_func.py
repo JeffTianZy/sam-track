@@ -15,7 +15,7 @@ def get_meta(input_video, input_imgs, fps):
         create_dir(dir_path)
 
         print(f"extracting imported video to {dir_path}")
-        os.system(f"ffmpeg -i {input_video} -r {str(fps)} {dir_path}/frame_%06d.png")
+        os.system(f"ffmpeg -i {input_video} -r {str(fps)} {dir_path}/frame_%06d.jpg")
 
         first_frame_dir = sorted(os.listdir(dir_path))[0]
         first_frame = cv2.imread(os.path.join(dir_path, first_frame_dir))

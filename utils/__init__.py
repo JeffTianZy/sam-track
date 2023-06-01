@@ -138,7 +138,7 @@ def tracking_objects(sam_tracker, input_video, input_img_seq, fps, progress=gr.P
             for bbox in sam_tracker.bboxs:
                 print(bbox)
                 sam_tracker.tracker.add(create_tracker('csrt'), frame, bbox)
-            frame_size = frame.shape[:2]
+            frame_size = frame.shape[1::-1]
         else:
             success, boxes = sam_tracker.tracker.update(frame)
             for j, newbox in enumerate(boxes):
@@ -160,17 +160,21 @@ def tracking_objects(sam_tracker, input_video, input_img_seq, fps, progress=gr.P
 
     # Generate video and gif
     print('Generating visualizations...')
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(io_args['temp_video'], fourcc, fps, frame_size)
-
+    os.system(f"ffmpeg -r {fps} -i {io_args['tracking_result_dir']}/frame_%06d.jpg -vcodec libx264 {io_args['temp_video']}")
     frames = []
     for img_file in bbox_list:
         img = cv2.imread(img_file)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         frames.append(img)
-        out.write(img)
-
-    out.release()
     imageio.mimsave(io_args['temp_gif'], frames)
 
     return io_args['temp_video'], io_args
+
+
+def save_visualization(io_args, data_type):
+    if data_type == 'video':
+        os.system(f"cp -f {io_args['temp_video']} {io_args['output_video']}")
+    elif data_type == 'gif':
+        os.system(f"cp -f {io_args['temp_gif']} {io_args['output_gif']}")
+    else:
+        raise NotImplementedError

@@ -147,5 +147,13 @@ with gr.Blocks() as demo:
                          outputs=[tracking_result, saving_dirs],
                          queue=True)
 
+    save_vid.click(fn=save_visualization,
+                   inputs=[saving_dirs, 'video'],
+                   outputs=[])
+
+    save_gif.click(fn=save_visualization,
+                   inputs=[saving_dirs, 'gif'],
+                   outputs=[])
+
 demo.queue()
 demo.launch()
